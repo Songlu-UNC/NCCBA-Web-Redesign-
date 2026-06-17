@@ -5,6 +5,7 @@ import {
   Building2,
   CalendarDays,
   ChevronDown,
+  CircleCheck,
   Globe2,
   Handshake,
   LockKeyhole,
@@ -35,6 +36,33 @@ type EventItem = {
   image: string;
   description: string;
 };
+
+type MembershipPlan = {
+  name: string;
+  price: string;
+  cadence: string;
+  slug: string;
+  registerPath: string;
+  benefits: string[];
+};
+
+type MemberProfile = {
+  fullName: string;
+  phone: string;
+  organization: string;
+  membershipType: string;
+  membershipStatus: 'Pending Review' | 'Active';
+};
+
+type StoredUser = {
+  id: string;
+  email: string;
+  password: string;
+  createdAt: string;
+  profile: MemberProfile;
+};
+
+type SessionUser = Omit<StoredUser, 'password'>;
 
 const navItems: NavItem[] = [
   { label: 'Home', path: '/' },
@@ -148,6 +176,179 @@ const sponsors = [
     ],
   },
 ];
+
+const membershipPlans: MembershipPlan[] = [
+  {
+    name: 'Student Membership',
+    price: '$100.00',
+    cadence: '/Year. Auto renew unless canceled.',
+    slug: 'student-member',
+    registerPath: '/register/student-member/',
+    benefits: [
+      'Free attendance at monthly luncheons',
+      'Opportunity to give member-spotlight remarks at one luncheon',
+      'Access to members-only business events',
+      'Free admission to the NCCBA Annual Business Summit',
+      'Career development support from the NCCBA board and leadership team',
+    ],
+  },
+  {
+    name: 'Standard Membership',
+    price: '$200.00',
+    cadence: '/Year. Auto renew unless canceled.',
+    slug: 'standard-membership',
+    registerPath: '/register/standard-membership/',
+    benefits: [
+      'Free attendance at monthly luncheons',
+      'Opportunity to pitch your company or give brief introductory remarks at one luncheon',
+      'Access to members-only business events',
+      'Free admission to the NCCBA Annual Business Summit',
+      'Professional and business support from the NCCBA board and leadership team',
+    ],
+  },
+  {
+    name: 'Life Time Membership',
+    price: '$1000.00',
+    cadence: 'for life time. No need to renew.',
+    slug: 'life-time-member',
+    registerPath: '/register/life-time-member/',
+    benefits: [
+      'Free attendance at all NCCBA events, including monthly luncheons, members-only events, and the Annual Business Summit',
+      'Participation in NCCBA leadership meetings to help shape strategy and direction',
+      'Opportunity to present a program or moderate a panel discussion',
+      'Ongoing professional and business support from the NCCBA board and leadership team',
+    ],
+  },
+  {
+    name: 'Corporate Membership',
+    price: '$500.00',
+    cadence: '/Year. Auto renew unless canceled.',
+    slug: 'corporate-membership',
+    registerPath: '/register/corporate-membership/',
+    benefits: [
+      'Free attendance at monthly luncheons',
+      'Access to members-only business events',
+      'One company pitch slot at a luncheon per year',
+      'Company listing on the NCCBA website as a business partner',
+      'One designated representative receives free admission to all monthly luncheons and the Annual Business Summit',
+    ],
+  },
+];
+
+const usersKey = 'nccba.demo.users';
+const sessionKey = 'nccba.demo.session';
+
+const defaultProfile = (membershipType = 'Standard Membership'): MemberProfile => ({
+  fullName: '',
+  phone: '',
+  organization: '',
+  membershipType,
+  membershipStatus: 'Pending Review',
+});
+
+const readUsers = (): StoredUser[] => {
+  try {
+    return JSON.parse(window.localStorage.getItem(usersKey) ?? '[]') as StoredUser[];
+  } catch {
+    return [];
+  }
+};
+
+const writeUsers = (users: StoredUser[]) => {
+  window.localStorage.setItem(usersKey, JSON.stringify(users));
+};
+
+const toSessionUser = ({ password: _password, ...user }: StoredUser): SessionUser => user;
+
+function useAuth() {
+  const [user, setUser] = useState<SessionUser | null>(() => {
+    const userId = window.localStorage.getItem(sessionKey);
+    const storedUser = readUsers().find((item) => item.id === userId);
+    return storedUser ? toSessionUser(storedUser) : null;
+  });
+
+  const register = ({
+    email,
+    password,
+    fullName,
+    phone,
+    organization,
+    membershipType,
+  }: {
+    email: string;
+    password: string;
+    fullName: string;
+    phone: string;
+    organization: string;
+    membershipType: string;
+  }) => {
+    const normalizedEmail = email.trim().toLowerCase();
+    const users = readUsers();
+
+    if (users.some((item) => item.email === normalizedEmail)) {
+      throw new Error('An account with this email already exists.');
+    }
+
+    if (password.length < 8) {
+      throw new Error('Password must be at least 8 characters.');
+    }
+
+    const newUser: StoredUser = {
+      id: window.crypto.randomUUID(),
+      email: normalizedEmail,
+      password,
+      createdAt: new Date().toISOString(),
+      profile: {
+        ...defaultProfile(membershipType),
+        fullName: fullName.trim(),
+        phone: phone.trim(),
+        organization: organization.trim(),
+      },
+    };
+
+    writeUsers([...users, newUser]);
+    window.localStorage.setItem(sessionKey, newUser.id);
+    setUser(toSessionUser(newUser));
+  };
+
+  const login = (email: string, password: string) => {
+    const normalizedEmail = email.trim().toLowerCase();
+    const storedUser = readUsers().find(
+      (item) => item.email === normalizedEmail && item.password === password,
+    );
+
+    if (!storedUser) {
+      throw new Error('Email or password is incorrect.');
+    }
+
+    window.localStorage.setItem(sessionKey, storedUser.id);
+    setUser(toSessionUser(storedUser));
+  };
+
+  const logout = () => {
+    window.localStorage.removeItem(sessionKey);
+    setUser(null);
+  };
+
+  const updateProfile = (profile: MemberProfile) => {
+    if (!user) {
+      return;
+    }
+
+    const users = readUsers();
+    const updatedUsers = users.map((item) =>
+      item.id === user.id ? { ...item, profile: { ...item.profile, ...profile } } : item,
+    );
+    const updatedUser = updatedUsers.find((item) => item.id === user.id);
+
+    writeUsers(updatedUsers);
+    if (updatedUser) {
+      setUser(toSessionUser(updatedUser));
+    }
+  };
+
+  return { user, register, login, logout, updateProfile };
+}
 
 function useRoute() {
   const [path, setPath] = useState(window.location.pathname);
@@ -558,28 +759,56 @@ function MembershipPage({ navigate }: { navigate: (path: string) => void }) {
   return (
     <>
       <PageHero
-        eyebrow="Membership"
-        title="Member access without WordPress friction."
-        copy="The membership page remains a main destination, now with a clearer pitch and a cleaner account path."
+        eyebrow="NCCBA Membership"
+        title="Join NCCBA and become part of a growing community."
+        copy="NCCBA membership supports professionals, families, companies, and future leaders through luncheons, member-only programs, business support, and annual events."
         image={`${frontPage}2026-01-21_NCCBA-New-Year-Celebration_0171.webp`}
       />
+      <section className="section membership-intro">
+        <div>
+          <p className="eyebrow">Membership Category</p>
+          <h2>Choose the membership level that fits your role.</h2>
+          <p>
+            The original WordPress page uses four membership categories. This React version keeps
+            the same organization and benefits while making the pricing easier to scan.
+          </p>
+        </div>
+        <Link path="/my-account" className="primary-link" onNavigate={navigate}>
+          Member Login <ArrowRight size={18} />
+        </Link>
+      </section>
+      <section className="section membership-plans" aria-label="Membership categories">
+        {membershipPlans.map((plan) => (
+          <article className="plan-card" key={plan.name}>
+            <h2>{plan.name}</h2>
+            <p className="plan-price">
+              <strong>{plan.price}</strong> {plan.cadence}
+            </p>
+            <ul>
+              {plan.benefits.map((benefit) => (
+                <li key={benefit}>{benefit}</li>
+              ))}
+            </ul>
+            <Link path={plan.registerPath} className="primary-link" onNavigate={navigate}>
+              Select <ArrowRight size={18} />
+            </Link>
+          </article>
+        ))}
+      </section>
       <section className="section membership">
         <div className="membership-panel">
-          <p className="eyebrow">Join NCCBA</p>
-          <h2>Explore tiers, renew membership, and access member resources.</h2>
+          <p className="eyebrow">Member Experience</p>
+          <h2>Keep the account and renewal path visible.</h2>
           <p>
-            This prototype keeps the original join flow visible while preparing the structure for a
-            future membership backend.
+            This area can connect to a future member portal, payment provider, or CRM without
+            requiring WordPress.
           </p>
-          <Link path="/my-account" className="primary-link" onNavigate={navigate}>
-            Preview Account Area <ArrowRight size={18} />
-          </Link>
         </div>
         <div className="membership-benefits">
-          <span>Event registration</span>
-          <span>Member directory concept</span>
-          <span>Sponsor visibility</span>
-          <span>Announcements</span>
+          <span>Monthly luncheons</span>
+          <span>Members-only business events</span>
+          <span>Annual Business Summit</span>
+          <span>Leadership and career support</span>
         </div>
       </section>
     </>
@@ -674,31 +903,304 @@ function CurrentSponsors() {
   );
 }
 
-function AccountPage() {
+function RegisterPage({
+  plan,
+  onRegister,
+  navigate,
+}: {
+  plan: MembershipPlan;
+  onRegister: ReturnType<typeof useAuth>['register'];
+  navigate: (path: string) => void;
+}) {
+  const [form, setForm] = useState({
+    fullName: '',
+    email: '',
+    phone: '',
+    organization: '',
+    password: '',
+    membershipType: plan.name,
+  });
+  const [error, setError] = useState('');
+
+  const handleChange = (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    setForm((current) => ({ ...current, [event.target.name]: event.target.value }));
+  };
+
+  const handleSubmit = (event: React.FormEvent) => {
+    event.preventDefault();
+    setError('');
+
+    try {
+      onRegister(form);
+      navigate('/my-account');
+    } catch (registerError) {
+      setError(registerError instanceof Error ? registerError.message : 'Unable to register.');
+    }
+  };
+
+  return (
+    <>
+      <PageHero
+        eyebrow="Member Registration"
+        title={`Register for ${plan.name}`}
+        copy="Create an account with your email and a password. This local prototype stores your demo member profile in this browser."
+        image={`${frontPage}2026-01-21_NCCBA-New-Year-Celebration_0234.webp`}
+      />
+      <section className="section auth-layout">
+        <form className="auth-card" onSubmit={handleSubmit}>
+          <p className="eyebrow">Create Account</p>
+          <h2>Register with your email</h2>
+          <div className="form-grid two-column">
+            <label>
+              Full name
+              <input name="fullName" value={form.fullName} onChange={handleChange} required />
+            </label>
+            <label>
+              Email
+              <input
+                name="email"
+                type="email"
+                value={form.email}
+                onChange={handleChange}
+                required
+              />
+            </label>
+            <label>
+              Phone
+              <input name="phone" value={form.phone} onChange={handleChange} />
+            </label>
+            <label>
+              Organization
+              <input name="organization" value={form.organization} onChange={handleChange} />
+            </label>
+            <label>
+              Membership type
+              <select name="membershipType" value={form.membershipType} onChange={handleChange}>
+                {membershipPlans.map((item) => (
+                  <option key={item.slug} value={item.name}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Password
+              <input
+                name="password"
+                type="password"
+                value={form.password}
+                onChange={handleChange}
+                minLength={8}
+                required
+              />
+            </label>
+          </div>
+          {error ? <p className="form-error">{error}</p> : null}
+          <button type="submit">Create Account</button>
+          <p className="auth-note">
+            Local prototype only: this demonstrates the flow before Supabase is connected.
+          </p>
+        </form>
+        <aside className="selected-plan">
+          <p className="eyebrow">Selected Plan</p>
+          <h2>{plan.name}</h2>
+          <p className="plan-price">
+            <strong>{plan.price}</strong> {plan.cadence}
+          </p>
+          <ul>
+            {plan.benefits.slice(0, 4).map((benefit) => (
+              <li key={benefit}>{benefit}</li>
+            ))}
+          </ul>
+        </aside>
+      </section>
+    </>
+  );
+}
+
+function AccountPage({
+  user,
+  onLogin,
+  onLogout,
+  onUpdateProfile,
+}: {
+  user: SessionUser | null;
+  onLogin: ReturnType<typeof useAuth>['login'];
+  onLogout: ReturnType<typeof useAuth>['logout'];
+  onUpdateProfile: ReturnType<typeof useAuth>['updateProfile'];
+}) {
+  const [loginForm, setLoginForm] = useState({ email: '', password: '' });
+  const [profileForm, setProfileForm] = useState<MemberProfile>(
+    user?.profile ?? defaultProfile(),
+  );
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (user) {
+      setProfileForm(user.profile);
+    }
+  }, [user]);
+
+  const handleLoginChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setLoginForm((current) => ({ ...current, [event.target.name]: event.target.value }));
+  };
+
+  const handleProfileChange = (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    setProfileForm((current) => ({ ...current, [event.target.name]: event.target.value }));
+  };
+
+  const handleLogin = (event: React.FormEvent) => {
+    event.preventDefault();
+    setError('');
+
+    try {
+      onLogin(loginForm.email, loginForm.password);
+      setMessage('Signed in successfully.');
+    } catch (loginError) {
+      setError(loginError instanceof Error ? loginError.message : 'Unable to sign in.');
+    }
+  };
+
+  const handleProfileSubmit = (event: React.FormEvent) => {
+    event.preventDefault();
+    onUpdateProfile(profileForm);
+    setMessage('Profile saved.');
+  };
+
+  if (user) {
+    return (
+      <>
+        <PageHero
+          eyebrow="My Account"
+          title={`Welcome, ${user.profile.fullName || user.email}`}
+          copy="Your member dashboard shows account details, membership status, and editable profile information."
+          image={`${frontPage}2026-01-21_NCCBA-New-Year-Celebration_0298.webp`}
+        />
+        <section className="section dashboard-layout">
+          <aside className="dashboard-summary">
+            <CircleCheck size={32} />
+            <p className="eyebrow">Signed In</p>
+            <h2>{user.profile.membershipType}</h2>
+            <dl>
+              <div>
+                <dt>Email</dt>
+                <dd>{user.email}</dd>
+              </div>
+              <div>
+                <dt>Status</dt>
+                <dd>{user.profile.membershipStatus}</dd>
+              </div>
+              <div>
+                <dt>Created</dt>
+                <dd>{new Date(user.createdAt).toLocaleDateString()}</dd>
+              </div>
+            </dl>
+            <button type="button" className="secondary-action" onClick={onLogout}>
+              Log Out
+            </button>
+          </aside>
+          <form className="auth-card" onSubmit={handleProfileSubmit}>
+            <p className="eyebrow">Member Profile</p>
+            <h2>Update your information</h2>
+            <div className="form-grid two-column">
+              <label>
+                Full name
+                <input
+                  name="fullName"
+                  value={profileForm.fullName}
+                  onChange={handleProfileChange}
+                />
+              </label>
+              <label>
+                Phone
+                <input name="phone" value={profileForm.phone} onChange={handleProfileChange} />
+              </label>
+              <label>
+                Organization
+                <input
+                  name="organization"
+                  value={profileForm.organization}
+                  onChange={handleProfileChange}
+                />
+              </label>
+              <label>
+                Membership type
+                <select
+                  name="membershipType"
+                  value={profileForm.membershipType}
+                  onChange={handleProfileChange}
+                >
+                  {membershipPlans.map((item) => (
+                    <option key={item.slug} value={item.name}>
+                      {item.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            {message ? <p className="form-success">{message}</p> : null}
+            <button type="submit">Save Profile</button>
+          </form>
+        </section>
+      </>
+    );
+  }
+
   return (
     <>
       <PageHero
         eyebrow="My Account"
-        title="A cleaner member login and dashboard entry."
-        copy="The original site includes My Account in the main nav. This prototype keeps it as a top-level route for future membership features."
+        title="Register or log in with your email."
+        copy="Members can create a local prototype account, log in, and view an account dashboard. The same UI can later connect to Supabase Auth."
         image={`${frontPage}2026-01-21_NCCBA-New-Year-Celebration_0298.webp`}
       />
-      <section className="section account-contact single-panel">
-        <div className="account-panel">
+      <section className="section auth-layout">
+        <form className="auth-card" onSubmit={handleLogin}>
           <LockKeyhole size={28} />
           <p className="eyebrow">Member Login</p>
           <h2>Sign in to your account</h2>
-          <form>
-            <label>
-              Email
-              <input type="email" placeholder="member@example.com" />
-            </label>
-            <label>
-              Password
-              <input type="password" placeholder="Password" />
-            </label>
-            <button type="button">Sign In</button>
-          </form>
+          <label>
+            Email
+            <input
+              name="email"
+              type="email"
+              placeholder="member@example.com"
+              value={loginForm.email}
+              onChange={handleLoginChange}
+              required
+            />
+          </label>
+          <label>
+            Password
+            <input
+              name="password"
+              type="password"
+              placeholder="Password"
+              value={loginForm.password}
+              onChange={handleLoginChange}
+              required
+            />
+          </label>
+          {error ? <p className="form-error">{error}</p> : null}
+          {message ? <p className="form-success">{message}</p> : null}
+          <button type="submit">Sign In</button>
+        </form>
+        <div className="registration-panel">
+          <p className="eyebrow">New Member</p>
+          <h2>Create your account from a membership plan.</h2>
+          <p>
+            Choose Student, Standard, Life Time, or Corporate membership and complete registration
+            with your email.
+          </p>
+          <div className="compact-plan-list">
+            {membershipPlans.map((plan) => (
+              <a key={plan.slug} href={plan.registerPath}>
+                {plan.name}
+                <span>{plan.price}</span>
+              </a>
+            ))}
+          </div>
         </div>
       </section>
     </>
@@ -794,8 +1296,17 @@ function NotFound({ navigate }: { navigate: (path: string) => void }) {
 
 function App() {
   const { path, navigate } = useRoute();
+  const auth = useAuth();
 
   const page = useMemo(() => {
+    const registrationPlan = membershipPlans.find(
+      (plan) => path === plan.registerPath || path === plan.registerPath.replace(/\/$/, ''),
+    );
+
+    if (registrationPlan) {
+      return <RegisterPage plan={registrationPlan} onRegister={auth.register} navigate={navigate} />;
+    }
+
     switch (path) {
       case '/':
         return <Home navigate={navigate} />;
@@ -828,13 +1339,20 @@ function App() {
       case '/previous-sponsors':
         return <SponsorsPage page="previous" />;
       case '/my-account':
-        return <AccountPage />;
+        return (
+          <AccountPage
+            user={auth.user}
+            onLogin={auth.login}
+            onLogout={auth.logout}
+            onUpdateProfile={auth.updateProfile}
+          />
+        );
       case '/contact-us':
         return <ContactPage />;
       default:
         return <NotFound navigate={navigate} />;
     }
-  }, [navigate, path]);
+  }, [auth.login, auth.logout, auth.register, auth.updateProfile, auth.user, navigate, path]);
 
   return (
     <>
